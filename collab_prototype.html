@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProStudio 협업 툴 프로토타입</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      .hide-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+      .hide-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+      .drag-over { outline: 2px dashed #60a5fa; outline-offset: -4px; background: #eff6ff; }
+      .mention-chip { color: #2563eb; background: #dbeafe; padding: 1px 6px; border-radius: 999px; font-weight: 600; }
+      .task-img-wrap { resize: both; overflow: auto; display: inline-block; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; }
+    </style>
+  </head>
+  <body class="bg-slate-100 text-slate-800">
+    <div class="min-h-screen flex">
+      <aside id="sidebar" class="fixed md:static z-30 inset-y-0 left-0 w-72 bg-white border-r border-slate-200 p-4 transform -translate-x-full md:translate-x-0 transition-transform">
+        <div class="flex items-center justify-between mb-4">
+          <h1 class="font-bold text-lg flex items-center gap-2 text-blue-700"><i data-lucide="layers"></i> ProStudio Flow</h1>
+          <button id="closeSidebarBtn" class="md:hidden p-2 rounded hover:bg-slate-100"><i data-lucide="x"></i></button>
+        </div>
+        <p class="text-xs text-slate-500 mb-4">Dooray + Jira 스타일 협업 관리</p>
+        <nav id="sideNav" class="space-y-2"></nav>
+      </aside>
+
+      <div id="sidebarBackdrop" class="hidden fixed inset-0 bg-black/30 z-20 md:hidden"></div>
+
+      <div class="flex-1 min-w-0">
+        <header class="bg-white border-b border-slate-200 p-4 sticky top-0 z-10">
+          <div class="flex items-center gap-3">
+            <button id="openSidebarBtn" class="md:hidden p-2 rounded-lg hover:bg-slate-100"><i data-lucide="menu"></i></button>
+            <div class="relative flex-1 max-w-2xl">
+              <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
+              <input id="globalSearch" class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-300 outline-none" placeholder="전역 검색: 제목/담당자/태그" />
+            </div>
+            <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+              <div class="w-8 h-8 rounded-full bg-blue-600 text-white grid place-items-center text-sm font-semibold">LM</div>
+              <div class="text-sm leading-tight"><p class="font-semibold">이민호</p><p class="text-xs text-slate-500">Product Owner</p></div>
+            </div>
+          </div>
+        </header>
+
+        <main class="p-4 md:p-6">
+          <div class="mb-4">
+            <h2 id="viewTitle" class="text-2xl font-bold"></h2>
+            <p id="viewDesc" class="text-slate-500"></p>
+          </div>
+          <section id="mainContent"></section>
+        </main>
+      </div>
+    </div>
+
+    <div id="toastStack" class="fixed top-4 right-4 z-[80] space-y-2"></div>
+
+    <div id="taskModal" class="hidden fixed inset-0 bg-slate-900/50 z-50 p-3 md:p-6">
+      <div id="modalCard" class="mx-auto w-full max-w-6xl h-[95vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+        <div class="sticky top-0 bg-white border-b border-slate-200 p-4 z-10">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex-1 space-y-3">
+              <div class="flex items-center gap-2 text-xs text-slate-500"><span id="modalMode"></span><span id="modalTaskId"></span></div>
+              <input id="mTitle" class="w-full text-lg font-bold border border-slate-200 rounded-lg px-3 py-2" placeholder="업무 제목" />
+              <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
+                <select id="mStatus" class="border rounded-lg px-2 py-2 border-slate-200"></select>
+                <input id="mCategory" class="border rounded-lg px-2 py-2 border-slate-200" placeholder="분류" />
+                <input id="mDueDate" type="date" class="border rounded-lg px-2 py-2 border-slate-200" />
+                <input id="mRefs" class="border rounded-lg px-2 py-2 border-slate-200" placeholder="참조자(,로 구분)" />
+                <input id="mAssignee" class="border rounded-lg px-2 py-2 border-slate-200" placeholder="담당자" />
+              </div>
+              <div class="flex items-center justify-between">
+                <div>
+                  <input id="tagInput" class="border rounded-lg px-2 py-1 text-sm border-slate-200" placeholder="태그 입력 후 Enter" />
+                  <div id="tagList" class="mt-2 flex flex-wrap gap-2"></div>
+                </div>
+                <button id="toggleExtraProps" class="text-sm text-blue-700">부가 속성 펼치기</button>
+              </div>
+              <div id="extraProps" class="hidden grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <input id="mStartDate" type="date" class="border rounded-lg px-2 py-2 border-slate-200" />
+                <input id="mEndDate" type="date" class="border rounded-lg px-2 py-2 border-slate-200" />
+              </div>
+            </div>
+            <div class="flex gap-1">
+              <button id="maximizeModal" class="p-2 rounded hover:bg-slate-100"><i data-lucide="maximize-2"></i></button>
+              <button id="closeModal" class="p-2 rounded hover:bg-slate-100"><i data-lucide="x"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-0 flex-1 min-h-0">
+          <div class="p-4 border-r border-slate-200 overflow-y-auto hide-scrollbar space-y-3">
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <div class="flex items-center gap-2 mb-2 text-sm">
+                <button data-editor-cmd="bold" class="px-2 py-1 bg-white border rounded">굵게</button>
+                <button data-editor-cmd="italic" class="px-2 py-1 bg-white border rounded">기울임</button>
+                <button data-editor-cmd="insertUnorderedList" class="px-2 py-1 bg-white border rounded">리스트</button>
+                <button id="insertCode" class="px-2 py-1 bg-white border rounded">코드블럭</button>
+              </div>
+              <div id="editor" contenteditable="true" class="min-h-[180px] bg-white border border-slate-200 rounded p-3"></div>
+            </div>
+
+            <div>
+              <p class="text-sm font-semibold mb-1">첨부 파일 (최대 50MB)</p>
+              <div id="fileDropzone" class="border-2 border-dashed border-slate-300 rounded-xl p-4 text-sm text-slate-500 bg-slate-50">파일을 드래그해서 올리거나 클릭해 선택하세요.</div>
+              <input id="fileInput" type="file" class="hidden" multiple />
+              <ul id="fileList" class="mt-2 text-sm space-y-1"></ul>
+            </div>
+          </div>
+
+          <div class="p-4 overflow-y-auto hide-scrollbar space-y-3">
+            <h4 class="font-semibold">이력 및 댓글 스레드</h4>
+            <div id="historyWrap" class="space-y-2"></div>
+            <label class="flex items-center gap-2 text-sm"><input id="notifyIntegration" type="checkbox" class="rounded" /> Teams/Outlook 알림 연동</label>
+            <div class="flex justify-end gap-2 pt-2">
+              <button id="deleteTask" class="px-3 py-2 bg-rose-50 text-rose-700 rounded-lg">삭제</button>
+              <button id="saveTask" class="px-3 py-2 bg-blue-600 text-white rounded-lg">저장</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mentionPopup" class="hidden fixed z-[90] bg-white border border-slate-200 rounded-xl shadow-lg p-2 text-sm"></div>
+
+    <script>
+      const STORAGE_KEY = 'prostudio-collab-v2';
+      const STATUS = ['To-do', 'In-Progress', 'Hold', 'QA', 'Done'];
+      const USERS = ['이민호', '김서연', '박민수', '정지은', '최현우'];
+      const menus = [
+        { key: 'dashboard', title: '통합 대시보드', desc: '워크로드/요구사항/활동 이력을 통합 조회합니다.' },
+        { key: 'kanban', title: '칸반 보드', desc: '상태 기반 업무 흐름과 드래그 앤 드롭 관리.' },
+        { key: 'calendar', title: '캘린더', desc: '월간 일정과 마감일 기반 업무 관리.' },
+      ];
+
+      const seedData = {
+        tasks: [
+          { id: 101, title: '결제 API 오류 로그 대시보드', status: 'In-Progress', category: 'Backend', assignee: '박민수', refs: ['정지은'], tags: ['critical', 'backend'], dueDate: '2026-04-20', startDate: '2026-04-15', endDate: '2026-04-20', description: '<p>로그 지표를 수집하고 시각화 대시보드를 구축합니다.</p>', files: [], history: [{ id: 1, time: '2026-04-16 09:10', text: '상태 변경: To-do → In-Progress', comments: [] }] },
+          { id: 102, title: 'SSO 권한 정책 재검토', status: 'Hold', category: 'Security', assignee: '이민호', refs: ['최현우'], tags: ['security'], dueDate: '2026-04-24', startDate: '2026-04-19', endDate: '2026-04-24', description: '<p>고객사 정책 확인 대기 중</p>', files: [], history: [{ id: 2, time: '2026-04-16 11:12', text: '고객사 회신 대기 상태로 보류', comments: [] }] },
+          { id: 103, title: '푸시 토큰 만료 대응 QA', status: 'QA', category: 'QA', assignee: '김서연', refs: ['박민수'], tags: ['qa'], dueDate: '2026-04-18', startDate: '2026-04-16', endDate: '2026-04-18', description: '<p>시나리오 테스트 진행</p>', files: [], history: [{ id: 3, time: '2026-04-16 10:42', text: 'QA 요청 상태로 이동', comments: [] }] },
+          { id: 104, title: '약관 동의 CSV 다운로드', status: 'To-do', category: 'Frontend', assignee: '정지은', refs: [], tags: ['frontend'], dueDate: '2026-04-22', startDate: '2026-04-17', endDate: '2026-04-22', description: '<p>관리자 페이지 내 다운로드 버튼 추가</p>', files: [], history: [{ id: 4, time: '2026-04-16 08:40', text: 'Task 생성', comments: [] }] },
+        ],
+        requirements: [
+          { reqNo: 'SR-2401', client: '한빛커머스', requestDate: '2026-04-10', note: '결제 API 오류 로그 대시보드 추가', taskId: 101 },
+          { reqNo: 'SR-2402', client: '오렌지모빌리티', requestDate: '2026-04-12', note: '모바일 푸시 토큰 만료 대응', taskId: 103 },
+          { reqNo: 'SR-2403', client: '해성보험', requestDate: '2026-04-13', note: '약관 동의 이력 다운로드 기능', taskId: 104 },
+        ],
+      };
+
+      const state = {
+        route: 'dashboard',
+        dragTaskId: null,
+        modalTaskId: null,
+        modalMax: false,
+        data: loadData(),
+      };
+
+      function loadData() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          return raw ? JSON.parse(raw) : structuredClone(seedData);
+        } catch {
+          return structuredClone(seedData);
+        }
+      }
+      const saveData = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+      const taskById = (id) => state.data.tasks.find((t) => t.id === id);
+      const fmtNow = () => new Date().toLocaleString('ko-KR', { hour12: false });
+      const esc = (s = '') => s.replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+      function toast(msg, tone = 'info') {
+        const cls = tone === 'ok' ? 'bg-emerald-600' : tone === 'warn' ? 'bg-amber-500' : 'bg-slate-800';
+        const node = document.createElement('div');
+        node.className = `text-white ${cls} px-4 py-3 rounded-xl shadow-lg animate-[fade_.25s_ease]`;
+        node.textContent = msg;
+        toastStack.appendChild(node);
+        setTimeout(() => node.remove(), 2200);
+      }
+
+      function setRoute(route) { state.route = route; render(); }
+
+      function renderNav() {
+        sideNav.innerHTML = menus.map(m => `<button data-route="${m.key}" class="w-full text-left px-3 py-2 rounded-xl ${state.route === m.key ? 'bg-blue-600 text-white' : 'hover:bg-slate-100'}">${m.title}</button>`).join('');
+        sideNav.querySelectorAll('button').forEach(b => b.onclick = () => { setRoute(b.dataset.route); closeSidebar(); });
+      }
+
+      function statusBadge(status){
+        const map = {'To-do':'bg-slate-100 text-slate-700','In-Progress':'bg-blue-100 text-blue-700','Hold':'bg-amber-100 text-amber-700','QA':'bg-violet-100 text-violet-700','Done':'bg-emerald-100 text-emerald-700'};
+        return `<span class="px-2 py-1 text-xs rounded-full ${map[status]||'bg-slate-100'}">${status}</span>`;
+      }
+
+      function renderDashboard() {
+        const byOwner = USERS.map(u => ({ u, count: state.data.tasks.filter(t => t.assignee === u).length }));
+        const done = state.data.tasks.filter(t => t.status === 'Done').length;
+        const progress = state.data.tasks.length ? Math.round((done / state.data.tasks.length) * 100) : 0;
+        const timeline = state.data.tasks.flatMap(t => t.history.map(h => ({...h, task:t.title}))).sort((a,b)=>new Date(b.time)-new Date(a.time)).slice(0,8);
+        return `<div class="grid lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white border border-slate-200 rounded-2xl p-4">
+              <h3 class="font-semibold mb-3">워크로드 요약 / 전체 진행률 ${progress}%</h3>
+              <div class="w-full h-2 bg-slate-200 rounded-full mb-4"><div class="h-2 bg-blue-600 rounded-full" style="width:${progress}%"></div></div>
+              <div class="grid md:grid-cols-2 gap-3">${byOwner.map(i=>`<div class="border rounded-xl p-3"><div class="flex justify-between text-sm"><span>${i.u}</span><span>${i.count}건</span></div><div class="h-1.5 bg-slate-100 mt-2 rounded"><div class="h-1.5 bg-cyan-500 rounded" style="width:${Math.min(i.count*20,100)}%"></div></div></div>`).join('')}</div>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 overflow-x-auto">
+              <h3 class="font-semibold mb-3">요구사항 리스트</h3>
+              <table class="w-full min-w-[700px] text-sm"><thead><tr class="text-slate-500 border-b"><th class="py-2 text-left">서비스 요청번호</th><th class="text-left">고객사</th><th class="text-left">요청일</th><th class="text-left">협의 내용</th><th class="text-left">상태</th></tr></thead><tbody>
+              ${state.data.requirements.map(r=>{ const t=taskById(r.taskId); return `<tr class="border-b hover:bg-slate-50 cursor-pointer" data-open-task="${r.taskId}"><td class="py-2 font-medium text-blue-700">${r.reqNo}</td><td>${r.client}</td><td>${r.requestDate}</td><td>${esc(r.note)}</td><td>${statusBadge(t?.status||'To-do')}</td></tr>`;}).join('')}
+              </tbody></table>
+            </div>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4"><h3 class="font-semibold mb-3">최근 활동 이력</h3><ul class="space-y-3">${timeline.map(t=>`<li class="pl-4 border-l-2 border-blue-200"><p class="text-xs text-slate-500">${t.time}</p><p class="text-sm"><b>${esc(t.task)}</b> · ${esc(t.text)}</p></li>`).join('')}</ul></div>
+        </div>`;
+      }
+
+      function renderKanban(){
+        return `<div class="grid xl:grid-cols-5 md:grid-cols-2 gap-3">${STATUS.map(s=>{
+          const list = state.data.tasks.filter(t=>t.status===s);
+          return `<section class="bg-slate-50 border border-slate-200 rounded-2xl p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-semibold">${s}</h3><button data-add-status="${s}" class="text-xs px-2 py-1 rounded bg-white border">새로운 Task +</button></div><div data-drop-zone="${s}" class="min-h-[420px] space-y-2">${list.map(t=>`<article draggable="true" data-task-id="${t.id}" class="group bg-white border rounded-xl p-3"><div class="flex justify-between gap-2"><button data-open-task="${t.id}" class="text-left text-sm font-semibold text-slate-700 hover:text-blue-700">${esc(t.title)}</button><button data-del-task="${t.id}" class="opacity-0 group-hover:opacity-100 text-rose-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div><p class="text-xs text-slate-500 mt-1">${t.assignee} · ${t.dueDate||'-'}</p></article>`).join('')}</div></section>`;
+        }).join('')}</div>`;
+      }
+
+      function renderCalendar() {
+        const now = new Date();
+        const y = now.getFullYear(), m = now.getMonth();
+        const first = new Date(y,m,1).getDay(), days = new Date(y,m+1,0).getDate();
+        const cells = [];
+        for(let i=0;i<first;i++) cells.push('<div class="bg-slate-50 rounded-xl min-h-[120px]"></div>');
+        for(let d=1; d<=days; d++){
+          const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const tasks = state.data.tasks.filter(t=>t.dueDate===ds || (t.startDate<=ds && t.endDate>=ds));
+          cells.push(`<div data-date-drop="${ds}" class="bg-white border border-slate-200 rounded-xl min-h-[120px] p-2"><p class="text-xs text-slate-500 mb-1">${d}</p>${tasks.map(t=>`<div draggable="true" data-cal-task="${t.id}" class="text-xs px-2 py-1 mb-1 rounded bg-blue-50 text-blue-700 cursor-grab"><button data-open-task="${t.id}" class="text-left w-full truncate">${esc(t.title)}</button></div>`).join('')}</div>`);
+        }
+        return `<div class="bg-white border border-slate-200 rounded-2xl p-4"><div class="flex justify-between mb-3"><h3 class="font-semibold">${y}년 ${m+1}월</h3><button id="newTaskFromCalendar" class="text-sm px-2 py-1 rounded border">새 일정 추가</button></div><div class="grid grid-cols-7 gap-2 text-xs text-slate-500 mb-2"><div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div></div><div class="grid grid-cols-7 gap-2">${cells.join('')}</div></div>`;
+      }
+
+      function render() {
+        const m = menus.find(x=>x.key===state.route);
+        viewTitle.textContent = m.title; viewDesc.textContent = m.desc;
+        renderNav();
+        if(state.route==='dashboard') mainContent.innerHTML = renderDashboard();
+        if(state.route==='kanban') mainContent.innerHTML = renderKanban();
+        if(state.route==='calendar') mainContent.innerHTML = renderCalendar();
+        bindViewEvents();
+        lucide.createIcons();
+      }
+
+      function bindViewEvents() {
+        document.querySelectorAll('[data-open-task]').forEach(el => el.onclick = () => openModal(Number(el.dataset.openTask)));
+        document.querySelectorAll('[data-add-status]').forEach(el => el.onclick = () => openModal(null, el.dataset.addStatus));
+        document.querySelectorAll('[data-del-task]').forEach(el => el.onclick = (e) => { e.stopPropagation(); deleteTask(Number(el.dataset.delTask)); });
+
+        document.querySelectorAll('[draggable="true"][data-task-id]').forEach(card => card.addEventListener('dragstart', () => state.dragTaskId = Number(card.dataset.taskId)));
+        document.querySelectorAll('[data-drop-zone]').forEach(zone => {
+          zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('drag-over'); });
+          zone.addEventListener('dragleave', ()=> zone.classList.remove('drag-over'));
+          zone.addEventListener('drop', ()=>{
+            zone.classList.remove('drag-over');
+            const t = taskById(state.dragTaskId); if(!t) return;
+            const next = zone.dataset.dropZone;
+            if (t.status!==next){ t.history.unshift({id:Date.now(), time:fmtNow(), text:`상태 변경: ${t.status} → ${next}`, comments:[]}); t.status = next; persistAndRefresh('상태가 업데이트되었습니다.'); }
+          });
+        });
+
+        document.querySelectorAll('[draggable="true"][data-cal-task]').forEach(card => card.addEventListener('dragstart', () => state.dragTaskId = Number(card.dataset.calTask)));
+        document.querySelectorAll('[data-date-drop]').forEach(cell => {
+          cell.addEventListener('dragover', e=>{ e.preventDefault(); cell.classList.add('drag-over'); });
+          cell.addEventListener('dragleave', ()=> cell.classList.remove('drag-over'));
+          cell.addEventListener('drop', ()=>{
+            cell.classList.remove('drag-over');
+            const t = taskById(state.dragTaskId); if(!t) return;
+            t.dueDate = cell.dataset.dateDrop;
+            t.history.unshift({id:Date.now(), time:fmtNow(), text:`마감일 변경: ${t.dueDate}`, comments:[]});
+            persistAndRefresh('캘린더 일정이 이동되었습니다.');
+          });
+        });
+
+        const calBtn = document.getElementById('newTaskFromCalendar');
+        if (calBtn) calBtn.onclick = () => openModal();
+      }
+
+      function deleteTask(id){
+        if(!confirm('정말 삭제할까요?')) return;
+        state.data.tasks = state.data.tasks.filter(t=>t.id!==id);
+        persistAndRefresh('업무가 삭제되었습니다.', 'warn');
+      }
+
+      function persistAndRefresh(msg, tone='ok') { saveData(); render(); toast(msg, tone); }
+
+      function renderHistoryItem(item, task, depth=0, parentId=null) {
+        return `<div class="border border-slate-200 rounded-xl p-3 ${depth? 'ml-6 bg-slate-50':''}">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex-1">
+              <p class="text-xs text-slate-500">${item.time}</p>
+              <div class="mt-1 text-sm" data-history-text="${item.id}" contenteditable="false">${esc(item.text)}</div>
+            </div>
+            <div class="flex gap-1">
+              <button data-edit-history="${item.id}" class="p-1 rounded hover:bg-slate-100"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+              <button data-reply-history="${item.id}" class="p-1 rounded hover:bg-slate-100"><i data-lucide="message-circle" class="w-4 h-4"></i></button>
+            </div>
+          </div>
+          ${(item.comments||[]).map(c=>`<div class="mt-2 ${depth? '':'pl-2 border-l'}"><div class="text-sm">${c.html}</div><div class="text-xs text-slate-500">${c.time}</div><button data-reply-comment="${item.id}:${c.id}" class="text-xs text-blue-700">댓글</button>${(c.children||[]).map(ch=>`<div class="ml-4 mt-1 p-2 rounded bg-white border text-sm">${ch.html}</div>`).join('')}</div>`).join('')}
+          <div id="reply-slot-${item.id}" class="mt-2"></div>
+        </div>`;
+      }
+
+      function openModal(taskId = null, presetStatus = 'To-do') {
+        state.modalTaskId = taskId;
+        const task = taskId ? taskById(taskId) : null;
+        taskModal.classList.remove('hidden');
+        modalMode.textContent = task ? '조회/수정 모드' : '새 업무 등록 모드';
+        modalTaskId.textContent = task ? `#${task.id}` : '#NEW';
+        mStatus.innerHTML = STATUS.map(s=>`<option ${task?.status===s||(!task&&presetStatus===s)?'selected':''}>${s}</option>`).join('');
+        mTitle.value = task?.title || '';
+        mCategory.value = task?.category || '';
+        mDueDate.value = task?.dueDate || '';
+        mRefs.value = (task?.refs||[]).join(', ');
+        mAssignee.value = task?.assignee || '';
+        mStartDate.value = task?.startDate || '';
+        mEndDate.value = task?.endDate || '';
+        editor.innerHTML = task?.description || '<p>업무 상세를 입력하세요.</p>';
+        renderTags(task?.tags || []);
+        renderFiles(task?.files || []);
+        renderHistory(task?.history || []);
+        lucide.createIcons();
+      }
+
+      function closeModalFn() { taskModal.classList.add('hidden'); state.modalTaskId = null; }
+      function renderTags(tags){ tagList.innerHTML = tags.map(t=>`<span class="px-2 py-1 bg-slate-100 rounded-full text-xs">#${esc(t)} <button data-del-tag="${esc(t)}" class="text-rose-500">×</button></span>`).join(''); }
+      function renderFiles(files){ fileList.innerHTML = files.map(f=>`<li>📎 ${esc(f)}</li>`).join(''); }
+      function renderHistory(history){ historyWrap.innerHTML = history.map(h=>renderHistoryItem(h)).join(''); bindHistoryEvents(); lucide.createIcons(); }
+
+      function bindHistoryEvents() {
+        historyWrap.querySelectorAll('[data-edit-history]').forEach(btn => btn.onclick = () => {
+          const id = Number(btn.dataset.editHistory);
+          const node = historyWrap.querySelector(`[data-history-text="${id}"]`);
+          node.contentEditable = 'true'; node.focus();
+          node.onblur = () => {
+            node.contentEditable = 'false';
+            const task = state.modalTaskId ? taskById(state.modalTaskId) : null;
+            if (!task) return;
+            const h = task.history.find(x=>x.id===id); if(h){ h.text = node.textContent.trim(); saveData(); toast('이력이 수정되었습니다.', 'ok'); render(); }
+          };
+        });
+        historyWrap.querySelectorAll('[data-reply-history]').forEach(btn => btn.onclick = () => showReplyForm(Number(btn.dataset.replyHistory)));
+        historyWrap.querySelectorAll('[data-reply-comment]').forEach(btn => btn.onclick = () => {
+          const [hid,cid] = btn.dataset.replyComment.split(':').map(Number);
+          showReplyForm(hid, cid);
+        });
+      }
+
+      function showReplyForm(historyId, commentId = null) {
+        const slot = document.getElementById(`reply-slot-${historyId}`);
+        slot.innerHTML = `<div class="border rounded-lg p-2 bg-slate-50"><div class="flex gap-1 text-xs mb-1"><button data-cmd="bold" class="px-2 py-1 border rounded">B</button><button data-cmd="italic" class="px-2 py-1 border rounded">I</button><button data-cmd="insertUnorderedList" class="px-2 py-1 border rounded">•</button><button class="px-2 py-1 border rounded"><i data-lucide="paperclip" class="w-3 h-3"></i></button></div><div contenteditable="true" id="replyEditor-${historyId}" class="bg-white min-h-[70px] border rounded p-2"></div><div class="text-right mt-2"><button data-save-reply="${historyId}:${commentId || ''}" class="px-2 py-1 text-xs rounded bg-blue-600 text-white">등록</button></div></div>`;
+        lucide.createIcons();
+        const ed = document.getElementById(`replyEditor-${historyId}`);
+        slot.querySelectorAll('[data-cmd]').forEach(b=> b.onclick = ()=> document.execCommand(b.dataset.cmd));
+        ed.onkeyup = (e) => handleMentionInput(e, ed);
+        slot.querySelector('[data-save-reply]').onclick = (e) => {
+          const [hid, cidRaw] = e.target.dataset.saveReply.split(':');
+          const cid = cidRaw ? Number(cidRaw) : null;
+          const html = ed.innerHTML.trim(); if(!html) return;
+          const task = taskById(state.modalTaskId); const h = task.history.find(x=>x.id===Number(hid)); if(!h) return;
+          if (!cid) h.comments = [...(h.comments||[]), { id: Date.now(), html, time: fmtNow(), children: [] }];
+          else {
+            const c = (h.comments||[]).find(x=>x.id===cid); if(c) c.children = [...(c.children||[]), { id: Date.now(), html, time: fmtNow() }];
+          }
+          saveData(); openModal(state.modalTaskId); toast('댓글이 등록되었습니다.', 'ok');
+        };
+      }
+
+      function handleMentionInput(event, editorNode) {
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        const text = sel.anchorNode?.textContent || '';
+        const at = text.lastIndexOf('@');
+        if (at < 0) return mentionPopup.classList.add('hidden');
+        const q = text.slice(at + 1).trim();
+        const list = USERS.filter(u => u.includes(q)).slice(0,5);
+        if (!list.length) return mentionPopup.classList.add('hidden');
+        const rect = editorNode.getBoundingClientRect();
+        mentionPopup.style.left = `${rect.left + 10}px`;
+        mentionPopup.style.top = `${rect.bottom + window.scrollY - 8}px`;
+        mentionPopup.innerHTML = list.map(u=>`<button class="block w-full text-left px-2 py-1 hover:bg-slate-100" data-mention="${u}">@${u}</button>`).join('');
+        mentionPopup.classList.remove('hidden');
+        mentionPopup.querySelectorAll('[data-mention]').forEach(btn => btn.onclick = () => {
+          document.execCommand('insertHTML', false, `<span class="mention-chip">@${btn.dataset.mention}</span>&nbsp;`);
+          mentionPopup.classList.add('hidden');
+          editorNode.focus();
+        });
+      }
+
+      closeModal.onclick = closeModalFn;
+      taskModal.addEventListener('click', (e) => { if (e.target === taskModal) closeModalFn(); });
+      maximizeModal.onclick = () => {
+        state.modalMax = !state.modalMax;
+        modalCard.classList.toggle('max-w-6xl', !state.modalMax);
+        modalCard.classList.toggle('max-w-none', state.modalMax);
+        modalCard.classList.toggle('h-[95vh]', !state.modalMax);
+        modalCard.classList.toggle('h-screen', state.modalMax);
+      };
+      toggleExtraProps.onclick = () => {
+        extraProps.classList.toggle('hidden');
+        toggleExtraProps.textContent = extraProps.classList.contains('hidden') ? '부가 속성 펼치기' : '부가 속성 숨기기';
+      };
+
+      tagInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const v = tagInput.value.trim(); if(!v) return;
+        const tags = [...tagList.querySelectorAll('[data-del-tag]')].map(x=>x.dataset.delTag);
+        if (!tags.includes(v)) tags.push(v);
+        renderTags(tags);
+        tagInput.value = '';
+      });
+      tagList.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-del-tag]');
+        if (!btn) return;
+        const tags = [...tagList.querySelectorAll('[data-del-tag]')].map(x=>x.dataset.delTag).filter(x=>x!==btn.dataset.delTag);
+        renderTags(tags);
+      });
+
+      document.querySelectorAll('[data-editor-cmd]').forEach(btn => btn.onclick = () => document.execCommand(btn.dataset.editorCmd));
+      insertCode.onclick = () => document.execCommand('insertHTML', false, '<pre class="bg-slate-900 text-slate-100 p-2 rounded">// code</pre>');
+      editor.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items || [];
+        for (const it of items) {
+          if (it.type.includes('image')) {
+            e.preventDefault();
+            const file = it.getAsFile();
+            const url = URL.createObjectURL(file);
+            document.execCommand('insertHTML', false, `<span class="task-img-wrap"><img src="${url}" class="max-w-full" alt="붙여넣기 이미지" /></span>`);
+          }
+        }
+      });
+
+      fileDropzone.onclick = () => fileInput.click();
+      ;['dragenter','dragover'].forEach(ev => fileDropzone.addEventListener(ev, (e)=>{ e.preventDefault(); fileDropzone.classList.add('drag-over'); }));
+      ;['dragleave','drop'].forEach(ev => fileDropzone.addEventListener(ev, ()=> fileDropzone.classList.remove('drag-over')));
+      fileDropzone.addEventListener('drop', (e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); });
+      fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+      function handleFiles(files) {
+        const names = [...files].map(f=>`${f.name} (${Math.round(f.size/1024)}KB)`);
+        const old = [...fileList.querySelectorAll('li')].map(li=>li.textContent.replace('📎 ',''));
+        renderFiles([...old, ...names]);
+      }
+
+      saveTask.onclick = () => {
+        const tags = [...tagList.querySelectorAll('[data-del-tag]')].map(x=>x.dataset.delTag);
+        const files = [...fileList.querySelectorAll('li')].map(li=>li.textContent.replace('📎 ',''));
+        const payload = {
+          title: mTitle.value.trim(), status: mStatus.value, category: mCategory.value.trim(), dueDate: mDueDate.value, refs: mRefs.value.split(',').map(v=>v.trim()).filter(Boolean),
+          assignee: mAssignee.value.trim() || '미배정', tags, startDate: mStartDate.value, endDate: mEndDate.value, description: editor.innerHTML, files,
+        };
+        if (!payload.title) return toast('제목을 입력해주세요.', 'warn');
+
+        if (state.modalTaskId) {
+          const t = taskById(state.modalTaskId);
+          Object.assign(t, payload);
+          t.history.unshift({ id: Date.now(), time: fmtNow(), text: '업무가 수정되었습니다.', comments: [] });
+        } else {
+          const newId = Date.now();
+          state.data.tasks.unshift({ id: newId, ...payload, history:[{id:newId+1,time:fmtNow(),text:'Task 생성',comments:[]}] });
+        }
+
+        if (notifyIntegration.checked) toast('Teams/Outlook 알림 발송 완료', 'ok');
+        saveData(); render(); closeModalFn(); toast('저장되었습니다.', 'ok');
+      };
+
+      deleteTask.onclick = () => {
+        if(!state.modalTaskId) return closeModalFn();
+        const id = state.modalTaskId;
+        state.data.tasks = state.data.tasks.filter(t=>t.id!==id);
+        saveData(); render(); closeModalFn(); toast('삭제되었습니다.', 'warn');
+      };
+
+      globalSearch.addEventListener('input', () => {
+        const q = globalSearch.value.trim().toLowerCase();
+        if (!q) return render();
+        const filtered = state.data.tasks.filter(t => [t.title, t.assignee, ...(t.tags||[])].join(' ').toLowerCase().includes(q));
+        viewTitle.textContent = `검색 결과 (${filtered.length})`;
+        viewDesc.textContent = `"${q}"`;
+        mainContent.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4"><ul class="space-y-2">${filtered.map(t=>`<li class="p-2 border rounded"><button data-open-task="${t.id}" class="font-medium hover:text-blue-700">${esc(t.title)}</button><p class="text-xs text-slate-500">${t.assignee} · ${t.status}</p></li>`).join('') || '<li>검색 결과가 없습니다.</li>'}</ul></div>`;
+        bindViewEvents();
+      });
+
+      function openSidebar(){ sidebar.classList.remove('-translate-x-full'); sidebarBackdrop.classList.remove('hidden'); }
+      function closeSidebar(){ sidebar.classList.add('-translate-x-full'); sidebarBackdrop.classList.add('hidden'); }
+      openSidebarBtn.onclick = openSidebar;
+      closeSidebarBtn.onclick = closeSidebar;
+      sidebarBackdrop.onclick = closeSidebar;
+
+      render();
+    </script>
+  </body>
+</html>
