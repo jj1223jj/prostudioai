@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>협업 툴 프로토타입</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    .mention { background: #dbeafe; color: #1d4ed8; border-radius: 6px; padding: 0 4px; }
+    .kanban-card:hover .delete-btn { opacity: 1; }
+    .calendar-cell { min-height: 120px; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div id="app" class="min-h-screen flex">
+    <aside id="sidebar" class="w-72 bg-white border-r border-slate-200 p-4 fixed md:static inset-y-0 left-0 z-40 transform -translate-x-full md:translate-x-0 transition-transform">
+      <div class="flex items-center gap-2 mb-6">
+        <div class="h-9 w-9 rounded-lg bg-indigo-600 text-white grid place-items-center font-bold">P</div>
+        <div>
+          <p class="font-bold">Pro Studio AI</p>
+          <p class="text-xs text-slate-500">Collaboration Suite</p>
+        </div>
+      </div>
+      <nav class="space-y-1" id="menu"></nav>
+    </aside>
+
+    <div id="overlay" class="fixed inset-0 bg-black/30 hidden z-30 md:hidden"></div>
+
+    <main class="flex-1 md:ml-0 w-full">
+      <header class="h-16 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between sticky top-0 z-20">
+        <div class="flex items-center gap-3 w-full max-w-xl">
+          <button id="hamburger" class="md:hidden p-2 rounded-lg hover:bg-slate-100"><i data-lucide="menu"></i></button>
+          <div class="relative w-full">
+            <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
+            <input id="globalSearch" class="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="전역 검색 (Task, 고객사, 태그)" />
+          </div>
+        </div>
+        <div class="ml-4 flex items-center gap-3">
+          <div class="text-right hidden sm:block">
+            <p class="text-sm font-medium">이민호</p>
+            <p class="text-xs text-slate-500">Product Manager</p>
+          </div>
+          <img src="https://i.pravatar.cc/80?img=13" alt="profile" class="h-10 w-10 rounded-full border"/>
+        </div>
+      </header>
+
+      <section id="content" class="p-4 md:p-6"></section>
+    </main>
+  </div>
+
+  <div id="taskModal" class="fixed inset-0 bg-black/35 hidden z-50">
+    <div id="taskModalPanel" class="bg-white w-[96vw] md:w-[88vw] h-[92vh] mx-auto mt-[2vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="sticky top-0 bg-white border-b px-4 md:px-6 py-3 z-10">
+        <div class="flex justify-between items-center">
+          <h2 id="modalTitle" class="font-bold text-lg">업무 상세</h2>
+          <div class="flex gap-2">
+            <button id="toggleFullscreen" class="p-2 rounded hover:bg-slate-100"><i data-lucide="maximize-2"></i></button>
+            <button id="closeModal" class="p-2 rounded hover:bg-slate-100"><i data-lucide="x"></i></button>
+          </div>
+        </div>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
+          <input id="taskTitleInput" class="px-3 py-2 border rounded-lg" placeholder="업무 제목" />
+          <select id="taskStatusInput" class="px-3 py-2 border rounded-lg"></select>
+          <input id="taskCategoryInput" class="px-3 py-2 border rounded-lg" placeholder="분류" />
+          <input id="taskDueDateInput" type="date" class="px-3 py-2 border rounded-lg" />
+          <input id="taskWatchersInput" class="px-3 py-2 border rounded-lg" placeholder="참조자 (쉼표 구분)" />
+          <div>
+            <input id="tagInput" class="px-3 py-2 border rounded-lg w-full" placeholder="태그 입력 후 Enter" />
+            <div id="tagWrap" class="mt-1 flex gap-1 flex-wrap"></div>
+          </div>
+        </div>
+        <button id="toggleExtra" class="text-xs mt-2 text-indigo-600">부가 속성 펼치기</button>
+        <div id="extraProps" class="hidden mt-2 grid md:grid-cols-3 gap-2 text-sm">
+          <input id="serviceNoInput" class="px-3 py-2 border rounded-lg" placeholder="서비스 요청번호" />
+          <input id="customerInput" class="px-3 py-2 border rounded-lg" placeholder="고객사" />
+          <input id="discussionInput" class="px-3 py-2 border rounded-lg" placeholder="협의 내용" />
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto scrollbar-thin p-4 md:p-6 space-y-5">
+        <div class="border rounded-xl p-3">
+          <div class="flex gap-2 mb-2 text-sm">
+            <button class="editor-btn px-2 py-1 border rounded" data-cmd="bold">굵게</button>
+            <button class="editor-btn px-2 py-1 border rounded" data-cmd="italic">기울임</button>
+            <button class="editor-btn px-2 py-1 border rounded" data-cmd="insertUnorderedList">리스트</button>
+            <button id="insertCode" class="px-2 py-1 border rounded">코드블럭</button>
+          </div>
+          <div id="editor" contenteditable="true" class="min-h-[140px] border rounded-lg p-3 focus:outline-none"></div>
+          <div id="imageResizePanel" class="hidden mt-2 flex items-center gap-2 text-sm">
+            <span>이미지 크기</span>
+            <input type="range" id="imageResizeRange" min="20" max="100" value="60" />
+          </div>
+        </div>
+
+        <div id="dropzone" class="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center bg-slate-50">
+          <p class="font-medium">첨부파일 Dropzone</p>
+          <p class="text-xs text-slate-500">최대 50MB (프로토타입: 파일명만 표시)</p>
+          <input id="fileInput" type="file" multiple class="hidden" />
+          <button id="pickFile" class="mt-2 px-3 py-1 border rounded-lg">파일 선택</button>
+          <ul id="fileList" class="mt-3 text-sm text-left space-y-1"></ul>
+        </div>
+
+        <div class="border rounded-xl p-3">
+          <h3 class="font-semibold mb-2">이력 및 댓글 스레드</h3>
+          <div id="historyList" class="space-y-3"></div>
+          <label class="flex items-center gap-2 mt-4 text-sm"><input id="notifyToggle" type="checkbox" class="rounded"> Teams/Outlook 알림 연동</label>
+        </div>
+      </div>
+
+      <div class="border-t p-3 flex justify-end gap-2">
+        <button id="deleteTask" class="px-4 py-2 rounded-lg border text-rose-600 hidden">삭제</button>
+        <button id="saveTask" class="px-4 py-2 rounded-lg bg-indigo-600 text-white">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastWrap" class="fixed top-4 right-4 z-[60] space-y-2"></div>
+
+<script>
+const STATUSES = [
+  { key:'todo', label:'해야 할 일', color:'bg-slate-100 text-slate-700' },
+  { key:'inprogress', label:'진행 중', color:'bg-blue-100 text-blue-700' },
+  { key:'hold', label:'보류', color:'bg-amber-100 text-amber-700' },
+  { key:'qa', label:'QA 요청', color:'bg-violet-100 text-violet-700' },
+  { key:'done', label:'최종 배포', color:'bg-emerald-100 text-emerald-700' },
+];
+const USERS = ['이민호','박수진','최유나','김도윤','서지민'];
+
+const defaultData = {
+  tasks: [
+    { id:crypto.randomUUID(), title:'결제 API 에러 수정', status:'inprogress', category:'백엔드', dueDate:new Date().toISOString().slice(0,10), tags:['긴급','결제'], watchers:['박수진'], description:'결제 실패 로그 분석 중', attachments:[], serviceNo:'SR-2401', customer:'A사', requestDate:'2026-04-11', discussion:'재현 케이스 확보', history:[{id:crypto.randomUUID(), text:'상태가 진행 중으로 변경됨', time:Date.now()-8600000, comments:[]}]},
+    { id:crypto.randomUUID(), title:'모바일 로그인 UI 개선', status:'todo', category:'프론트', dueDate:new Date(Date.now()+86400000*2).toISOString().slice(0,10), tags:['UI'], watchers:['최유나'], description:'로그인 버튼 대비 개선 필요', attachments:[], serviceNo:'SR-2402', customer:'B사', requestDate:'2026-04-12', discussion:'디자인 검수 대기', history:[{id:crypto.randomUUID(), text:'신규 요청 등록', time:Date.now()-6400000, comments:[]}]},
+    { id:crypto.randomUUID(), title:'DB 인덱스 최적화', status:'qa', category:'DB', dueDate:new Date(Date.now()+86400000*4).toISOString().slice(0,10), tags:['성능'], watchers:['김도윤'], description:'QA에서 성능 확인 예정', attachments:[], serviceNo:'SR-2403', customer:'C사', requestDate:'2026-04-13', discussion:'쿼리 3종 개선', history:[{id:crypto.randomUUID(), text:'QA 요청으로 이동', time:Date.now()-5400000, comments:[]}]},
+  ]
+};
+
+const state = {
+  view:'dashboard',
+  search:'',
+  tasks:[],
+  modalTaskId:null,
+  editingHistory:null,
+  mentionTarget:null,
+  selectedImg:null,
+};
+
+const el = id => document.getElementById(id);
+
+function loadData() {
+  const saved = localStorage.getItem('collab_prototype_data');
+  state.tasks = saved ? JSON.parse(saved).tasks : defaultData.tasks;
+}
+function persist() { localStorage.setItem('collab_prototype_data', JSON.stringify({tasks:state.tasks})); }
+
+function toast(msg, tone='indigo') {
+  const d = document.createElement('div');
+  d.className = `px-4 py-2 rounded-lg shadow bg-${tone}-600 text-white animate-pulse`;
+  d.textContent = msg;
+  el('toastWrap').appendChild(d);
+  setTimeout(()=>d.remove(), 2000);
+}
+
+function filteredTasks() {
+  const s = state.search.trim().toLowerCase();
+  if (!s) return state.tasks;
+  return state.tasks.filter(t => [t.title,t.customer,t.tags.join(','),t.category].join(' ').toLowerCase().includes(s));
+}
+
+function renderMenu() {
+  const items = [
+    ['dashboard','통합 대시보드','layout-dashboard'],
+    ['kanban','칸반 보드','kanban-square'],
+    ['calendar','캘린더','calendar-days']
+  ];
+  el('menu').innerHTML = items.map(([k,txt,icon])=>`
+    <button class="w-full flex items-center gap-2 px-3 py-2 rounded-lg ${state.view===k?'bg-indigo-50 text-indigo-600':'hover:bg-slate-100'}" onclick="changeView('${k}')">
+      <i data-lucide="${icon}" class="w-4 h-4"></i>${txt}
+    </button>`).join('');
+}
+
+function badge(status){ const s=STATUSES.find(v=>v.key===status); return `<span class="text-xs px-2 py-1 rounded-full ${s.color}">${s.label}</span>`; }
+
+function renderDashboard() {
+  const tasks = filteredTasks();
+  const total = tasks.length || 1;
+  const done = tasks.filter(t=>t.status==='done').length;
+  const byUser = {};
+  tasks.forEach(t => t.watchers.forEach(w => byUser[w]=(byUser[w]||0)+1));
+  const recent = tasks.flatMap(t=>t.history.map(h=>({...h,title:t.title}))).sort((a,b)=>b.time-a.time).slice(0,8);
+
+  el('content').innerHTML = `
+    <div class="grid lg:grid-cols-3 gap-4 mb-4">
+      <div class="lg:col-span-2 bg-white p-4 rounded-xl border">
+        <h3 class="font-semibold mb-3">워크로드 요약</h3>
+        <div class="space-y-2 mb-3">${Object.entries(byUser).map(([u,c])=>`<div><div class='flex justify-between text-sm'><span>${u}</span><span>${c}건</span></div><div class='h-2 bg-slate-100 rounded'><div class='h-full bg-indigo-500 rounded' style='width:${Math.min(100,c/total*100*3)}%'></div></div></div>`).join('')}</div>
+        <div class="text-sm mb-1">전체 프로젝트 진행률 ${Math.round(done/total*100)}%</div>
+        <div class="h-3 bg-slate-100 rounded"><div class="h-full bg-emerald-500 rounded" style="width:${Math.round(done/total*100)}%"></div></div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border">
+        <h3 class="font-semibold mb-3">최근 활동 이력</h3>
+        <div class="space-y-2 text-sm">${recent.map(r=>`<div class='border-l-2 border-indigo-200 pl-2'><p>${r.text}</p><p class='text-slate-500 text-xs'>${new Date(r.time).toLocaleString()} · ${r.title}</p></div>`).join('')}</div>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl border overflow-auto">
+      <table class="w-full text-sm min-w-[900px]">
+        <thead class="bg-slate-50"><tr><th class="p-3 text-left">서비스 요청번호</th><th class="p-3 text-left">고객사</th><th class="p-3 text-left">요청일</th><th class="p-3 text-left">협의 내용</th><th class="p-3 text-left">상태</th><th class="p-3"></th></tr></thead>
+        <tbody>${tasks.map(t=>`<tr class='border-t'><td class='p-3'>${t.serviceNo||'-'}</td><td class='p-3'>${t.customer||'-'}</td><td class='p-3'>${t.requestDate||'-'}</td><td class='p-3'>${t.discussion||'-'}</td><td class='p-3'>${badge(t.status)}</td><td class='p-3 text-right'><button onclick="openTaskModal('${t.id}')" class='text-indigo-600'>보기</button></td></tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderKanban() {
+  const tasks = filteredTasks();
+  el('content').innerHTML = `<div class="grid md:grid-cols-2 xl:grid-cols-5 gap-4">${STATUSES.map(s=>`
+    <div class="bg-white border rounded-xl p-3" ondragover="event.preventDefault()" ondrop="dropToStatus(event,'${s.key}')">
+      <div class="flex justify-between items-center mb-3"><h3 class="font-semibold text-sm">${s.label}</h3><button class="text-indigo-600" onclick="openTaskModal(null,'${s.key}')">+</button></div>
+      <div class="space-y-2">${tasks.filter(t=>t.status===s.key).map(t=>`
+        <article class="kanban-card border rounded-lg p-2 bg-slate-50 relative" draggable="true" ondragstart="dragTask(event,'${t.id}')">
+          <button class="delete-btn opacity-0 transition absolute top-1 right-1 text-rose-500" onclick="deleteTaskById('${t.id}')"><i data-lucide='trash-2' class='w-3 h-3'></i></button>
+          <h4 class="font-medium text-sm cursor-pointer" onclick="openTaskModal('${t.id}')">${t.title}</h4>
+          <div class="mt-2 flex gap-1 flex-wrap">${(t.tags||[]).map(tag=>`<span class='text-[11px] px-2 py-0.5 bg-white rounded border'>${tag}</span>`).join('')}</div>
+          <p class="text-xs text-slate-500 mt-2">마감 ${t.dueDate||'-'}</p>
+        </article>`).join('')}</div>
+    </div>`).join('')}</div>`;
+}
+
+function renderCalendar() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const first = new Date(y,m,1), last = new Date(y,m+1,0);
+  const startDay = first.getDay();
+  const days = Array.from({length:startDay+last.getDate()}, (_,i)=> i<startDay ? null : i-startDay+1);
+
+  el('content').innerHTML = `
+    <div class="bg-white border rounded-xl p-4">
+      <div class="flex justify-between items-center mb-3"><h3 class="font-semibold">${y}년 ${m+1}월</h3><button onclick="openTaskModal(null)" class="px-3 py-1 text-sm bg-indigo-600 text-white rounded">새 일정</button></div>
+      <div class="grid grid-cols-7 text-xs text-center font-medium mb-1">${['일','월','화','수','목','금','토'].map(d=>`<div class='py-1'>${d}</div>`).join('')}</div>
+      <div class="grid grid-cols-7 gap-2">${days.map(day=>`
+        <div class="calendar-cell border rounded p-1" ondragover="event.preventDefault()" ondrop="dropToDate(event,'${day?`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`:''}')">
+          ${day?`<p class='text-xs mb-1'>${day}</p>`:''}
+          <div class='space-y-1'>${day?filteredTasks().filter(t=>t.dueDate===`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`).map(t=>`<button draggable='true' ondragstart="dragTask(event,'${t.id}')" onclick="openTaskModal('${t.id}')" class='w-full text-left text-[11px] px-1 py-0.5 bg-indigo-100 rounded truncate'>${t.title}</button>`).join(''):''}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function render() {
+  renderMenu();
+  if (state.view==='dashboard') renderDashboard();
+  if (state.view==='kanban') renderKanban();
+  if (state.view==='calendar') renderCalendar();
+  lucide.createIcons();
+}
+
+function changeView(v){ state.view=v; render(); closeSidebar(); }
+function dragTask(e,id){ e.dataTransfer.setData('text/plain', id); }
+function dropToStatus(e,status){ const id=e.dataTransfer.getData('text/plain'); const t=state.tasks.find(x=>x.id===id); if(!t)return; t.status=status; t.history.unshift({id:crypto.randomUUID(), text:`상태가 ${STATUSES.find(s=>s.key===status).label}(으)로 변경됨`, time:Date.now(), comments:[]}); persist(); render(); toast('상태가 변경되었습니다'); }
+function dropToDate(e,date){ if(!date) return; const id=e.dataTransfer.getData('text/plain'); const t=state.tasks.find(x=>x.id===id); if(!t)return; t.dueDate=date; t.history.unshift({id:crypto.randomUUID(), text:`마감일이 ${date}(으)로 변경됨`, time:Date.now(), comments:[]}); persist(); render(); toast('일정이 이동되었습니다'); }
+
+function deleteTaskById(id){ state.tasks = state.tasks.filter(t=>t.id!==id); persist(); render(); toast('삭제되었습니다','rose'); }
+
+function openTaskModal(taskId=null, defaultStatus='todo') {
+  state.modalTaskId = taskId;
+  const t = state.tasks.find(v=>v.id===taskId) || { id:null, title:'', status:defaultStatus, category:'', dueDate:new Date().toISOString().slice(0,10), tags:[], watchers:[], description:'', attachments:[], serviceNo:'', customer:'', requestDate:new Date().toISOString().slice(0,10), discussion:'', history:[] };
+  el('modalTitle').textContent = taskId ? '업무 조회/수정' : '새 업무 등록';
+  el('deleteTask').classList.toggle('hidden', !taskId);
+
+  el('taskTitleInput').value = t.title;
+  el('taskStatusInput').innerHTML = STATUSES.map(s=>`<option value='${s.key}' ${s.key===t.status?'selected':''}>${s.label}</option>`).join('');
+  el('taskCategoryInput').value = t.category || '';
+  el('taskDueDateInput').value = t.dueDate || '';
+  el('taskWatchersInput').value = (t.watchers||[]).join(', ');
+  el('serviceNoInput').value = t.serviceNo || '';
+  el('customerInput').value = t.customer || '';
+  el('discussionInput').value = t.discussion || '';
+  el('editor').innerHTML = t.description || '';
+  el('fileList').innerHTML = (t.attachments||[]).map(f=>`<li>📎 ${f}</li>`).join('');
+
+  renderTags(t.tags || []);
+  renderHistory(t.history || []);
+
+  el('taskModal').classList.remove('hidden');
+  lucide.createIcons();
+}
+
+function closeModal(){ el('taskModal').classList.add('hidden'); state.editingHistory=null; state.mentionTarget=null; }
+
+function renderTags(tags){
+  el('tagWrap').innerHTML = tags.map((tag,i)=>`<span class='px-2 py-1 text-xs bg-slate-100 rounded-full'>${tag}<button class='ml-1 text-rose-500' onclick='removeTag(${i})'>×</button></span>`).join('');
+  el('tagWrap').dataset.tags = JSON.stringify(tags);
+}
+function removeTag(i){ const t=JSON.parse(el('tagWrap').dataset.tags||'[]'); t.splice(i,1); renderTags(t); }
+
+function renderHistory(history){
+  const node = (c,hid,depth=0)=>`
+    <div class='ml-${Math.min(depth*4,8)} mt-2 border-l pl-2'>
+      <div class='text-sm'>${c.text}</div>
+      <div class='text-xs text-slate-500'>${new Date(c.time).toLocaleString()}</div>
+      <button class='text-xs text-indigo-600' onclick="toggleReply('${hid}','${c.id}')"><i data-lucide='message-circle' class='inline w-3 h-3'></i> 댓글</button>
+      ${c.replying?commentEditor(`reply-${hid}-${c.id}`):''}
+      ${(c.comments||[]).map(x=>node(x,hid,depth+1)).join('')}
+    </div>`;
+
+  el('historyList').innerHTML = history.map(h=>`
+    <div class='border rounded-lg p-2'>
+      ${state.editingHistory===h.id ? `<input id='editHistoryInput' class='w-full border rounded px-2 py-1 text-sm' value="${h.text.replaceAll('"','&quot;')}" /><button class='text-xs text-indigo-600 mt-1' onclick="saveHistoryEdit('${h.id}')">저장</button>` : `<div class='flex justify-between gap-2'><div><p class='text-sm cursor-pointer' onclick="editHistory('${h.id}')">${h.text}</p><p class='text-xs text-slate-500'>${new Date(h.time).toLocaleString()}</p></div><button onclick="toggleReply('${h.id}')"><i data-lucide='message-circle' class='w-4 h-4'></i></button></div>`}
+      ${h.replying ? commentEditor(`reply-${h.id}`) : ''}
+      ${(h.comments||[]).map(c=>node(c,h.id)).join('')}
+    </div>`).join('');
+}
+
+function commentEditor(targetId){
+  return `<div class='mt-2 border rounded p-2'>
+    <div class='flex gap-1 mb-1 text-xs'>
+      <button onclick="cmdComment('${targetId}','bold')" class='border px-2 rounded'>B</button>
+      <button onclick="cmdComment('${targetId}','italic')" class='border px-2 rounded'>I</button>
+      <button onclick="cmdComment('${targetId}','insertUnorderedList')" class='border px-2 rounded'>•</button>
+      <button class='border px-2 rounded'>📎</button>
+    </div>
+    <div id='${targetId}' contenteditable='true' class='min-h-[56px] border rounded p-2 text-sm' onkeyup="onMentionKey(event,'${targetId}')"></div>
+    <div class='mt-1 text-right'><button class='text-xs bg-indigo-600 text-white px-2 py-1 rounded' onclick="submitComment('${targetId}')">등록</button></div>
+  </div>`;
+}
+
+function cmdComment(id,cmd){ document.getElementById(id).focus(); document.execCommand(cmd,false,null); }
+
+function onMentionKey(e,targetId){
+  state.mentionTarget = targetId;
+  const sel = window.getSelection();
+  if (e.key !== '@') return;
+  let popup = document.getElementById('mentionPopup');
+  if (!popup) { popup = document.createElement('div'); popup.id='mentionPopup'; popup.className='fixed bg-white border rounded shadow p-1 z-[70]'; document.body.appendChild(popup); }
+  popup.innerHTML = USERS.map(u=>`<button class='block w-full text-left text-sm px-2 py-1 hover:bg-slate-100' onclick="insertMention('${u}')">@${u}</button>`).join('');
+  const r = sel.getRangeAt(0).getBoundingClientRect();
+  popup.style.left = r.left + 'px'; popup.style.top = (r.bottom+6) + 'px';
+}
+
+function insertMention(name){
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  const span = document.createElement('span');
+  span.className='mention';
+  span.textContent = '@'+name;
+  const range = sel.getRangeAt(0);
+  range.insertNode(span);
+  range.collapse(false);
+  document.getElementById('mentionPopup')?.remove();
+}
+
+function editHistory(id){ state.editingHistory=id; const task=state.tasks.find(t=>t.id===state.modalTaskId); renderHistory(task.history); lucide.createIcons(); }
+function saveHistoryEdit(id){ const task=state.tasks.find(t=>t.id===state.modalTaskId); const h=task.history.find(v=>v.id===id); h.text=el('editHistoryInput').value; state.editingHistory=null; renderHistory(task.history); toast('이력이 수정되었습니다'); }
+function toggleReply(historyId, commentId=null){
+  const task=state.tasks.find(t=>t.id===state.modalTaskId);
+  const h=task.history.find(v=>v.id===historyId);
+  if(!commentId){ h.replying = !h.replying; renderHistory(task.history); lucide.createIcons(); return; }
+  const seek=(list)=>{ for(const c of list){ if(c.id===commentId){ c.replying=!c.replying; return true; } if(seek(c.comments||[])) return true; } return false;};
+  seek(h.comments||[]); renderHistory(task.history); lucide.createIcons();
+}
+
+function submitComment(targetId){
+  const html = document.getElementById(targetId).innerHTML.trim();
+  if(!html) return;
+  const task=state.tasks.find(t=>t.id===state.modalTaskId);
+  const [_,hid,cid] = targetId.split('-');
+  const comment = {id:crypto.randomUUID(), text:html, time:Date.now(), comments:[]};
+  const h = task.history.find(v=>v.id===hid);
+  if (!cid) h.comments = [...(h.comments||[]), comment], h.replying=false;
+  else {
+    const add=(list)=>{ for(const c of list){ if(c.id===cid){ c.comments=[...(c.comments||[]), comment]; c.replying=false; return true; } if(add(c.comments||[])) return true; } return false;};
+    add(h.comments||[]);
+  }
+  renderHistory(task.history); lucide.createIcons();
+}
+
+el('tagInput').addEventListener('keydown', (e)=>{
+  if(e.key!=='Enter') return;
+  e.preventDefault();
+  const v=e.target.value.trim(); if(!v) return;
+  const tags = JSON.parse(el('tagWrap').dataset.tags||'[]');
+  if(!tags.includes(v)) tags.push(v);
+  renderTags(tags); e.target.value='';
+});
+
+el('saveTask').onclick = () => {
+  const data = {
+    id: state.modalTaskId || crypto.randomUUID(),
+    title: el('taskTitleInput').value || '제목 없음',
+    status: el('taskStatusInput').value,
+    category: el('taskCategoryInput').value,
+    dueDate: el('taskDueDateInput').value,
+    watchers: el('taskWatchersInput').value.split(',').map(v=>v.trim()).filter(Boolean),
+    tags: JSON.parse(el('tagWrap').dataset.tags||'[]'),
+    description: el('editor').innerHTML,
+    attachments: Array.from(el('fileList').querySelectorAll('li')).map(li=>li.textContent.replace('📎 ','')),
+    serviceNo: el('serviceNoInput').value,
+    customer: el('customerInput').value,
+    requestDate: new Date().toISOString().slice(0,10),
+    discussion: el('discussionInput').value,
+    history: (state.tasks.find(t=>t.id===state.modalTaskId)?.history || []).slice(),
+  };
+  const prev = state.tasks.find(t=>t.id===state.modalTaskId);
+  if (prev && prev.status !== data.status) data.history.unshift({id:crypto.randomUUID(), text:`상태가 ${STATUSES.find(s=>s.key===data.status).label}(으)로 변경됨`, time:Date.now(), comments:[]});
+  if (!state.modalTaskId) data.history.unshift({id:crypto.randomUUID(), text:'신규 Task가 생성됨', time:Date.now(), comments:[]});
+
+  if (state.modalTaskId) state.tasks = state.tasks.map(t=>t.id===state.modalTaskId ? {...t,...data} : t);
+  else state.tasks.unshift(data);
+
+  persist();
+  render();
+  if(el('notifyToggle').checked) toast('알림 발송 완료','emerald');
+  toast('저장되었습니다');
+  closeModal();
+};
+
+el('deleteTask').onclick = () => { if(!state.modalTaskId) return; deleteTaskById(state.modalTaskId); closeModal(); };
+el('closeModal').onclick = closeModal;
+el('taskModal').addEventListener('click',(e)=>{ if(e.target.id==='taskModal') closeModal(); });
+
+el('toggleExtra').onclick = () => el('extraProps').classList.toggle('hidden');
+el('toggleFullscreen').onclick = () => {
+  const panel = el('taskModalPanel');
+  panel.classList.toggle('w-[96vw]'); panel.classList.toggle('h-[92vh]'); panel.classList.toggle('mt-[2vh]');
+  panel.classList.toggle('w-screen'); panel.classList.toggle('h-screen'); panel.classList.toggle('mt-0'); panel.classList.toggle('rounded-2xl');
+};
+
+Array.from(document.querySelectorAll('.editor-btn')).forEach(btn=>btn.onclick=()=>document.execCommand(btn.dataset.cmd,false,null));
+el('insertCode').onclick = ()=>document.execCommand('insertHTML', false, `<pre class='bg-slate-900 text-slate-100 p-2 rounded'>code...</pre>`);
+
+el('editor').addEventListener('paste', (e)=>{
+  const items = e.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type.includes('image')) {
+      e.preventDefault();
+      const f = item.getAsFile();
+      const r = new FileReader();
+      r.onload = () => document.execCommand('insertHTML', false, `<div class='inline-block resize overflow-auto border rounded max-w-full'><img src='${r.result}' class='max-w-full pasted-image' style='width:60%'></div>`);
+      r.readAsDataURL(f);
+    }
+  }
+});
+
+el('editor').addEventListener('click',(e)=>{
+  if(e.target.tagName==='IMG'){ state.selectedImg=e.target; el('imageResizePanel').classList.remove('hidden'); }
+});
+el('imageResizeRange').oninput = (e)=>{ if(state.selectedImg) state.selectedImg.style.width = e.target.value+'%'; };
+
+el('pickFile').onclick = ()=>el('fileInput').click();
+el('fileInput').onchange = (e)=> handleFiles([...e.target.files]);
+
+function handleFiles(files){ const list=el('fileList'); files.forEach(f=>{ const li=document.createElement('li'); li.textContent='📎 '+f.name; list.appendChild(li); }); }
+['dragenter','dragover'].forEach(ev=>el('dropzone').addEventListener(ev,e=>{e.preventDefault(); el('dropzone').classList.add('border-indigo-400');}));
+['dragleave','drop'].forEach(ev=>el('dropzone').addEventListener(ev,e=>{e.preventDefault(); el('dropzone').classList.remove('border-indigo-400');}));
+el('dropzone').addEventListener('drop',e=>handleFiles([...e.dataTransfer.files]));
+
+el('hamburger').onclick = ()=>{ el('sidebar').classList.toggle('-translate-x-full'); el('overlay').classList.toggle('hidden'); };
+el('overlay').onclick = closeSidebar;
+function closeSidebar(){ el('sidebar').classList.add('-translate-x-full'); el('overlay').classList.add('hidden'); if(window.innerWidth>=768) el('sidebar').classList.remove('-translate-x-full'); }
+
+el('globalSearch').addEventListener('input', e=>{ state.search=e.target.value; render(); });
+
+loadData();
+render();
+</script>
+</body>
+</html>
